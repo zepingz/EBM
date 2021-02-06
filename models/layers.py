@@ -82,3 +82,19 @@ class BaselineLayer(nn.Module):
         src = self.linear2(self.dropout1(self.activation(self.linear1(x))))
         x = self.norm(x + self.dropout2(src))
         return x
+
+
+class LinearPredictor(nn.Module):
+    def __init__(self, in_channels, out_channels, encoder):
+        super().__init__()
+        self.encoder = encoder
+        self.fc = nn.Linear(in_channels, out_channels)
+
+        for param in self.encoder.parameters():
+            param.requires_grad = False
+
+    def forward(self, x):
+        bs = len(x)
+        x = self.encoder(x)
+        x = self.fc(x)
+        return x

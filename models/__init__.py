@@ -34,7 +34,7 @@ def add_model_specific_args(parser):
     parser.add_argument(
         "--latent_optimizer_type",
         choices=["GD", "LBFGS"],
-        default="GD",
+        default="LBFGS",
         type=str
     )
     parser.add_argument("--latent_size", default=2, type=int)

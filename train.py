@@ -1,7 +1,9 @@
 import os
+import copy
 import random
 import argparse
 import numpy as np
+from comet_ml import Experiment
 
 import torch
 import torch.nn as nn
@@ -9,9 +11,10 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 import util.misc as utils
-from engine import evaluate, train_one_epoch
+from engine import evaluate, train_one_epoch, encoder_evaluate
 from data import build_dataset, add_data_specific_args
 from models import build_model, add_model_specific_args
+from models.layers import LinearPredictor
 
 
 def get_args():
@@ -22,6 +25,13 @@ def get_args():
     parser.add_argument("--weight_decay", default=0., type=float)
     parser.add_argument("--epochs", default=100, type=int)
     parser.add_argument("--clip_max_norm", default=0., type=float)
+
+    # Encoder evaluation
+    parser.add_argument("--no_linpred_eval", action="store_true")
+    parser.add_argument("--linpred_epochs", default=1, type=int)
+    parser.add_argument("--linpred_batch_size", default=512, type=int)
+    parser.add_argument("--linpred_lr", default=0.1, type=float)
+    parser.add_argument("--linpred_interval", default=5, type=int)
 
     # General
     parser.add_argument("--counter", default=None, type=int)
@@ -47,7 +57,7 @@ def main(args):
         save_dir = None
 
     # Build dataloader
-    train_dataset, val_dataset = build_dataset(args)
+    train_dataset, val_dataset, train_linpred_dataset, val_linpred_dataset = build_dataset(args)
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
@@ -65,6 +75,23 @@ def main(args):
         pin_memory=True,
     )
     args.ptp_size = train_dataset._ptp_size
+
+    train_linpred_dataloader = DataLoader(
+        train_linpred_dataset,
+        batch_size=args.linpred_batch_size,
+        shuffle=True,
+        num_workers=args.num_workers,
+        # drop_last=True,
+        pin_memory=True,
+    )
+    val_linpred_dataloader = DataLoader(
+        val_linpred_dataset,
+        batch_size=args.linpred_batch_size,
+        shuffle=False,
+        num_workers=args.num_workers,
+        # drop_last=True,
+        pin_memory=True,
+    )
 
     # Fix the seed for reproducibility
     torch.manual_seed(args.seed)
@@ -95,11 +122,38 @@ def main(args):
     optimizer = optim.Adam(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
+    # Setup comet ml
+    api_key = os.environ.get("COMET_API_KEY")
+    project_name = os.environ.get("COMET_PROJECT_NAME")
+    workspace = os.environ.get("COMET_WORKSPACE")
+    do_log = (
+        api_key is not None
+        and project_name is not None
+        and workspace is not None
+    )
+    if do_log:
+        experiment = Experiment(
+            api_key=api_key,
+            project_name=project_name,
+            workspace=workspace,
+        )
+        experiment.set_name(f"ebm_{args.counter}")
+    else:
+        experiment = None
+
+
     print("Start training")
     for epoch in range(args.epochs):
         # Train
         train_stats = train_one_epoch(
-            model, train_dataloader, optimizer, device, epoch, args.clip_max_norm)
+            model,
+            train_dataloader,
+            optimizer,
+            device,
+            epoch,
+            args.clip_max_norm,
+            experiment,
+        )
         # lr_scheduler.step()
 
         # Save model
@@ -115,7 +169,28 @@ def main(args):
 
         # Val
         val_stats = evaluate(
-            model, val_dataloader, device, save_dir)
+            model, val_dataloader, device, epoch, experiment)
+
+        # Encoder val
+        if not args.no_linpred_eval and\
+        (epoch % args.linpred_interval == 0 or epoch == args.epochs):
+            linear_predictor = LinearPredictor(
+                args.embedding_size,
+                10 if args.dataset == "moving_mnist" else 8,
+                copy.deepcopy(model.frame_encoder),
+            ).to(device)
+            linear_optimizer = optim.Adam(
+                linear_predictor.parameters(), lr=args.linpred_lr)
+            linpred_acc = encoder_evaluate(
+                linear_predictor,
+                linear_optimizer,
+                train_linpred_dataloader,
+                val_linpred_dataloader,
+                args.linpred_epochs,
+                device,
+                epoch,
+                experiment,
+            )
 
 
 if __name__ == "__main__":

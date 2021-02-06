@@ -120,7 +120,7 @@ class LatentMinimizationEBM(nn.Module):
 
             if self.latent_optimizer_type == "LBFGS":
                 latent_optimizer = optim.LBFGS(
-                    (latent,), line_search_fn="strong_wolfe")
+                    (latent,), line_search_fn=None) #"strong_wolfe"
 
                 def closure():
                     predicted_hidden = self.hidden_predictor(

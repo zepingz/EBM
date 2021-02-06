@@ -10,7 +10,7 @@ def add_data_specific_args(parser):
     # General
     parser.add_argument(
         "--dataset",
-        default="dummy",
+        default="moving_mnist",
         choices=["dummy", "moving_mnist", "poke"],
         help="Dataset type"
     )
@@ -21,7 +21,7 @@ def add_data_specific_args(parser):
         help="Number of input conditional frames",
     )
     parser.add_argument("--num_workers", default=12, type=int)
-    parser.add_argument("--batch_size", default=32, type=int)
+    parser.add_argument("--batch_size", default=512, type=int)
 
     # Moving MNIST
     parser.add_argument(
@@ -50,7 +50,7 @@ def add_data_specific_args(parser):
     parser.add_argument(
         "--mnist_linpred_dataset_size",
         type=int,
-        default=500,
+        default=10000,
         help="Size of mnist linpred dataset"
     )
 
@@ -87,7 +87,7 @@ def build_dataset(args):
             shear_range=(-20, 20),
             dataset_size=args.mnist_train_dataset_size,
         )
-        val_dataset = train_dataset = MovingMNISTDataset(
+        val_dataset = MovingMNISTDataset(
             args.mnist_data_root,
             args.num_conditional_frames,
             moving_mnist_transform,
@@ -102,6 +102,20 @@ def build_dataset(args):
             shear_range=(-20, 20),
             dataset_size=args.mnist_val_dataset_size
         )
+
+        if args.no_linpred_eval:
+            train_linpred_dataset = None
+            val_linpred_dataset = None
+        else:
+            train_linpred_dataset = MovingMNISTDataset(
+                args.mnist_data_root,
+                1,
+                moving_mnist_transform,
+                train=True,
+                dataset_size=args.mnist_linpred_dataset_size,
+                linpred=True,
+            )
+            val_linpred_dataset = val_dataset
 
     if args.dataset == "poke":
         # TODO: compute mean and std
@@ -123,4 +137,4 @@ def build_dataset(args):
             train=False,
         )
 
-    return train_dataset, val_dataset
+    return train_dataset, val_dataset, train_linpred_dataset, val_linpred_dataset

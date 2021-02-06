@@ -187,9 +187,7 @@ class MovingMNISTDataset(Dataset):
 
         imgs = torch.cat([self.transform(img) for img in imgs]).unsqueeze(1)
 
-        # NOTE: the PTP for moving mnist only contains the difference between
-        # x and y of the first digit
-        PTP = torch.zeros(16,)
+        PTP = torch.zeros(self._ptp_size,)
 
         # have to change scale ratio to log
         if self.ptp_type == "absolute":
@@ -226,7 +224,7 @@ class MovingMNISTDataset(Dataset):
         imgs = torch.from_numpy(np.load(
             os.path.join(self.dataset_folder, f"{index}_img.npy"))).float()
         PTP = torch.from_numpy(np.load(
-            os.path.join(self.dataset_folder, f"{index}_ptp.npy"))).float()
+            os.path.join(self.dataset_folder, f"{index}_ptp.npy"))).float()[:5]
         lbls = torch.from_numpy(np.load(
             os.path.join(self.dataset_folder, f"{index}_lbl.npy"))).long()
 
