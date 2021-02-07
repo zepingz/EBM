@@ -37,8 +37,8 @@ def add_model_specific_args(parser):
         default="LBFGS",
         type=str
     )
+    parser.add_argument("--latent_optimizer_step", default=5, type=int)
     parser.add_argument("--latent_size", default=2, type=int)
-    parser.add_argument("--no_latent", action="store_true")
 
     # Lambdas
     parser.add_argument("--lambda_target_prediction", default=1.0, type=float)
@@ -50,7 +50,10 @@ def add_model_specific_args(parser):
 def build_model(args):
     encoder = build_encoder(args)
     decoder = build_decoder(args)
+
     args.embedding_size = encoder._embedding_size
+    args.no_latent = "latent" not in args.predictor_type
+
     predictor = build_predictor(args)
     model = LatentMinimizationEBM(
         encoder,
@@ -60,6 +63,7 @@ def build_model(args):
         args.latent_size,
         args.no_latent,
         args.latent_optimizer_type,
+        args.latent_optimizer_step,
         args.lambda_target_prediction,
     )
     return model

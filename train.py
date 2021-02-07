@@ -25,6 +25,7 @@ def get_args():
     parser.add_argument("--weight_decay", default=0., type=float)
     parser.add_argument("--epochs", default=100, type=int)
     parser.add_argument("--clip_max_norm", default=0., type=float)
+    parser.add_argument("--batch_repeat_step", default=3, type=int)
 
     # Encoder evaluation
     parser.add_argument("--no_linpred_eval", action="store_true")
@@ -131,7 +132,7 @@ def main(args):
         and project_name is not None
         and workspace is not None
     )
-    if do_log:
+    if False:# do_log:
         experiment = Experiment(
             api_key=api_key,
             project_name=project_name,
@@ -149,6 +150,7 @@ def main(args):
             model,
             train_dataloader,
             optimizer,
+            1 if args.no_latent else args.batch_repeat_step,
             device,
             epoch,
             args.clip_max_norm,

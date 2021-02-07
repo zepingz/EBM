@@ -12,6 +12,7 @@ def train_one_epoch(
     model: nn.Module,
     data_loader: Iterable,
     optimizer: optim.Optimizer,
+    batch_repeat_step: int,
     device: torch.device,
     epoch: int,
     max_norm: float = 0,
@@ -22,23 +23,38 @@ def train_one_epoch(
     metric_logger.add_meter(
         'lr', utils.SmoothedValue(window_size=1, fmt="{value:6f}"))
     header = f"Epoch: [{epoch}]"
-    print_freq = 10
+    print_freq = 1
 
     for batch in metric_logger.log_every(data_loader, print_freq, header):
-        batch = {k: v.to(device) for k, v in batch.items()}
+        # batch = {k: v.to(device) for k, v in batch.items()}
+        conditional_frames = batch["conditional_frames"].to(device)
+        ptp = batch["PTP"].to(device)
+        target_frame = batch["target_frame"].to(device)
 
-        free_energies = model._compute_objective(batch)
-        total_loss = free_energies["total"]
+        # Compute optimal latent
+        encoded_frames = model.encode_frames(conditional_frames).detach()
+        latent = model.compute_optimal_latent(
+            encoded_frames, ptp, target_frame).detach()
+        latent.requires_grad = False
 
-        if not math.isfinite(total_loss):
-            print(f"Loss is {total_loss.item()}, stopping training")
-            sys.exit(1)
+        for i in range(batch_repeat_step):
+            encoded_frames = model.encode_frames(conditional_frames)
+            predicted_hidden = model.hidden_predictor(
+                encoded_frames, ptp, latent)
+            predicted_frame = model.frame_decoder(predicted_hidden)
 
-        optimizer.zero_grad()
-        total_loss.backward()
-        if max_norm > 0:
-            nn.utils.clip_grad_norm_(model.parameters(), max_norm)
-        optimizer.step()
+            free_energies = model.compute_energies(predicted_frame, target_frame)
+            total_loss = free_energies["total"]
+
+            if not math.isfinite(total_loss):
+                print(f"Loss is {total_loss.item()}, stopping training")
+                sys.exit(1)
+
+            optimizer.zero_grad()
+            total_loss.backward()
+            if max_norm > 0:
+                nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+            optimizer.step()
 
         metric_logger.update(loss=total_loss, **free_energies)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
@@ -63,9 +79,21 @@ def evaluate(model, data_loader, device, epoch, experiment=None):
     print_freq = 10
 
     for batch in metric_logger.log_every(data_loader, print_freq, header):
-        batch = {k: v.to(device) for k, v in batch.items()}
+        # batch = {k: v.to(device) for k, v in batch.items()}
+        conditional_frames = batch["conditional_frames"].to(device)
+        ptp = batch["PTP"].to(device)
+        target_frame = batch["target_frame"].to(device)
 
-        free_energies = model._compute_objective(batch)
+        encoded_frames = model.encode_frames(conditional_frames)
+        latent = model.compute_optimal_latent(
+            encoded_frames.detach(), ptp, target_frame).detach()
+        latent.requires_grad = False
+
+        predicted_hidden = model.hidden_predictor(
+            encoded_frames, ptp, latent)
+        predicted_frame = model.frame_decoder(predicted_hidden)
+
+        free_energies = model.compute_energies(predicted_frame, target_frame)
         total_loss = free_energies["total"]
 
         metric_logger.update(loss=total_loss, **free_energies)

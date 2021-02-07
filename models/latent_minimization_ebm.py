@@ -14,12 +14,14 @@ class LatentMinimizationEBM(nn.Module):
         latent_size,
         no_latent,
         latent_optimizer_type,
+        latent_optimizer_step,
         lambda_target_prediction,
     ):
         super().__init__()
         self.latent_size = latent_size
-        self.latent_optimizer_type = latent_optimizer_type
         self.no_latent = no_latent
+        self.latent_optimizer_type = latent_optimizer_type
+        self.latent_optimizer_step = latent_optimizer_step
 
         self.frame_encoder = encoder
         self.frame_decoder = decoder
@@ -30,59 +32,38 @@ class LatentMinimizationEBM(nn.Module):
             # "decoding_error": lambda_decoding_error,
         }
 
-    def forward(self, batch):
-        conditional_frames = batch["conditional_frames"]
-        ptp = batch["PTP"]
-        bs, seq_len, c, h, w = conditional_frames.shape
-        device = conditional_frames.device
-
+    def forward(self, conditional_frames, ptp):
         # Encode conditional frames
-        conditional_frames = conditional_frames.view(bs * seq_len, c, h, w)
-        encoded_frames = self.frame_encoder(conditional_frames)
-        encoded_frames = encoded_frames.view(bs, seq_len, -1)
+        encoded_frames = self.encode_frames(conditional_frames)
 
         # Predict target frame
-        latent = self.sample_latent(bs, device)
+        latent = self.sample_latent(len(encoded_frames), encoded_frames.device)
         predicted_hidden = self.hidden_predictor(
             encoded_frames, ptp, latent)
         predicted_frame = self.frame_decoder(predicted_hidden)
 
         return predicted_frame
 
+    def encode_frames(self, frames):
+        if len(frames.shape) == 5:
+            bs, seq_len, c, h, w = frames.shape
+            frames = frames.view(bs * seq_len, c, h, w)
+            encoded_frames = self.frame_encoder(frames)
+            encoded_frames = encoded_frames.view(bs, seq_len, -1)
+        else:
+            encoded_frames = self.frame_encoder(frames)
+
+        return encoded_frames
+
     def sample_latent(self, bs, device):
         latent = torch.randn(bs, self.latent_size).to(device)
         latent.requires_grad = True
         return latent
 
-    def _compute_objective(self, batch):
-        conditional_frames = batch["conditional_frames"]
-        ptp = batch["PTP"]
-        target_frame = batch["target_frame"]
-        bs, seq_len, c, h, w = conditional_frames.shape
-        device = conditional_frames.device
-
-        # Encode conditional frames
-        conditional_frames = conditional_frames.view(bs * seq_len, c, h, w)
-        encoded_frames = self.frame_encoder(conditional_frames)
-        encoded_frames = encoded_frames.view(bs, seq_len, -1)
-
-        # Compute optimal latent
+    def compute_optimal_latent(self, encoded_frames, ptp, target_frame):
         if self.no_latent:
-            latent = 0
-        else:
-            latent = self._compute_optimal_latent(
-                encoded_frames.detach(), ptp, target_frame)
+            return torch.zeros(1)
 
-        # Predict target frame
-        predicted_hidden = self.hidden_predictor(
-            encoded_frames, ptp, latent)
-        predicted_frame = self.frame_decoder(predicted_hidden)
-
-        # Compute free energies
-        free_energies = self.compute_energies(predicted_frame, target_frame)
-        return free_energies
-
-    def _compute_optimal_latent(self, encoded_frames, ptp, target_frame):
         # Freeze decoder and predictor
         for param in self.frame_decoder.parameters():
             param.requires_grad = False
@@ -105,7 +86,7 @@ class LatentMinimizationEBM(nn.Module):
             if self.latent_optimizer_type == "GD":
                 latent_optimizer = optim.SGD((latent,), lr=0.1)
 
-                for i in range(10):
+                for _ in range(self.latent_optimizer_step):
                     predicted_hidden = self.hidden_predictor(
                         encoded_frames, ptp, latent)
                     predicted_frame = self.frame_decoder(predicted_hidden)
@@ -120,7 +101,7 @@ class LatentMinimizationEBM(nn.Module):
 
             if self.latent_optimizer_type == "LBFGS":
                 latent_optimizer = optim.LBFGS(
-                    (latent,), line_search_fn=None) #"strong_wolfe"
+                    (latent,), max_iter=20, line_search_fn=None) #"strong_wolfe"
 
                 def closure():
                     predicted_hidden = self.hidden_predictor(
@@ -131,11 +112,15 @@ class LatentMinimizationEBM(nn.Module):
                         target_frame,
                         latent=latent,
                     )
+                    print(f"{energies['total'].item():.5f}")
                     latent_optimizer.zero_grad()
                     energies["total"].backward()
                     return energies["total"]
 
-                latent_optimizer.step(closure)
+                for _ in range(self.latent_optimizer_step):
+                    latent_optimizer.step(closure)
+                    print()
+                print("---\n")
 
     def compute_energies(self, predicted_frame, target_frame, latent=None):
         energies = {}
