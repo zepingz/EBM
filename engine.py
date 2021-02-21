@@ -23,7 +23,7 @@ def train_one_epoch(
     metric_logger.add_meter(
         'lr', utils.SmoothedValue(window_size=1, fmt="{value:6f}"))
     header = f"Epoch: [{epoch}]"
-    print_freq = 1
+    print_freq = 10
 
     for batch in metric_logger.log_every(data_loader, print_freq, header):
         # batch = {k: v.to(device) for k, v in batch.items()}
@@ -120,11 +120,12 @@ def encoder_evaluate(
     epoch,
     experiment=None,
 ):
+    accs = []
     linear_predictor.train()
-    for _ in range(linpred_epochs):
+    for linpred_epoch in range(linpred_epochs):
         for batch in train_linpred_datloader:
             imgs = batch["target_frame"].to(device)
-            lbls = batch["labels"].flatten().to(device)
+            lbls = batch["label"].flatten().to(device)
             pred = linear_predictor(imgs)
 
             loss = nn.CrossEntropyLoss()(pred, lbls)
@@ -132,18 +133,23 @@ def encoder_evaluate(
             loss.backward()
             linear_optimizer.step()
 
-    linear_predictor.eval()
-    correct = 0
-    with torch.no_grad():
-        for batch in val_linpred_dataloader:
-            imgs = batch["target_frame"].to(device)
-            lbls = batch["labels"].flatten().to(device)
-            pred = linear_predictor(imgs)
+        linear_predictor.eval()
+        correct = 0
+        with torch.no_grad():
+            for batch in val_linpred_dataloader:
+                imgs = batch["target_frame"].to(device)
+                lbls = batch["label"].flatten().to(device)
+                pred = linear_predictor(imgs)
 
-            correct += (torch.argmax(pred, dim=1) == lbls).sum().item()
+                correct += (torch.argmax(pred, dim=1) == lbls).sum().item()
 
-    acc = correct / len(val_linpred_dataloader.dataset)
-    print(f"Linear acc: {acc:.4f}")
+        acc = correct / len(val_linpred_dataloader.dataset)
+        accs.append(acc)
+        print(f"Epoch {linpred_epoch} linear acc: {acc:.4f}")
+
+    best_acc = max(accs)
+    print(best_acc)
+
     if experiment is not None:
-        experiment.log_metrics({f"eval_acc": acc}, step=epoch)
-    return acc
+        experiment.log_metrics({f"eval_acc": best_acc}, step=epoch)
+    return best_acc

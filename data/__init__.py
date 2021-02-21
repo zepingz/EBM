@@ -3,7 +3,7 @@ import torchvision.transforms as T
 
 from .dummy import DummyDataset
 from .moving_mnist import MovingMNISTDataset
-from .poke import PokeDataset
+from .poke import PokeDataset, PokeLinpredDataset
 
 
 def add_data_specific_args(parser):
@@ -118,11 +118,10 @@ def build_dataset(args):
             val_linpred_dataset = val_dataset
 
     if args.dataset == "poke":
-        # TODO: compute mean and std
         poke_transform = T.Compose([
             T.Resize((64, 64)),
             T.ToTensor(),
-            T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            T.Normalize([0.6501, 0.5889, 0.5466], [0.2822, 0.2744, 0.2606])
         ])
         train_dataset = PokeDataset(
             args.poke_data_root,
@@ -133,6 +132,16 @@ def build_dataset(args):
         val_dataset = PokeDataset(
             args.poke_data_root,
             args.num_conditional_frames,
+            poke_transform,
+            train=False,
+        )
+        train_linpred_dataset = PokeLinpredDataset(
+            args.poke_data_root,
+            poke_transform,
+            train=True,
+        )
+        val_linpred_dataset = PokeLinpredDataset(
+            args.poke_data_root,
             poke_transform,
             train=False,
         )

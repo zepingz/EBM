@@ -132,7 +132,7 @@ def main(args):
         and project_name is not None
         and workspace is not None
     )
-    if False:# do_log:
+    if do_log:
         experiment = Experiment(
             api_key=api_key,
             project_name=project_name,
@@ -178,7 +178,7 @@ def main(args):
         (epoch % args.linpred_interval == 0 or epoch == args.epochs):
             linear_predictor = LinearPredictor(
                 args.embedding_size,
-                10 if args.dataset == "moving_mnist" else 8,
+                10 if args.dataset == "moving_mnist" else 8, # stupid hack
                 copy.deepcopy(model.frame_encoder),
             ).to(device)
             linear_optimizer = optim.Adam(

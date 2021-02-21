@@ -232,7 +232,7 @@ class MovingMNISTDataset(Dataset):
             "conditional_frames": imgs[:-1],
             "PTP": PTP,
             "target_frame": imgs[-1],
-            "labels": lbls,
+            "label": lbls,
         }
 
     def __len__(self):

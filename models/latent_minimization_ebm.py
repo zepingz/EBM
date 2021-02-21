@@ -112,15 +112,15 @@ class LatentMinimizationEBM(nn.Module):
                         target_frame,
                         latent=latent,
                     )
-                    print(f"{energies['total'].item():.5f}")
+                    # print(f"{energies['total'].item():.5f}")
                     latent_optimizer.zero_grad()
                     energies["total"].backward()
                     return energies["total"]
 
                 for _ in range(self.latent_optimizer_step):
                     latent_optimizer.step(closure)
-                    print()
-                print("---\n")
+                    # print()
+                # print("---\n")
 
     def compute_energies(self, predicted_frame, target_frame, latent=None):
         energies = {}

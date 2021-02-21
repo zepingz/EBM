@@ -6,6 +6,7 @@ from PIL import Image
 
 import torch
 from torch.utils.data import Dataset
+import torchvision.transforms as T
 
 
 train_cls_dict = {
@@ -56,7 +57,7 @@ val_cls_dict = {
 
 class PokeDataset(Dataset):
     _ptp_size = 4
-    
+
     def __init__(
         self, data_root, num_conditional_frames, transform, size=64, train=True):
         super().__init__()
@@ -159,7 +160,7 @@ class PokeLinpredDataset(Dataset):
 
         return {
             "target_frame": img,
-            "labels": lbl,
+            "label": lbl,
         }
 
     def __len__(self):
